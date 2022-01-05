@@ -1,6 +1,6 @@
 {
-  "name": "react-native-billing",
-  "version": "3.0.0",
+  "name": "@pandarose/react-native-billing",
+  "version": "3.0.1",
   "description": "React Native bridge for InApp Billing on Android",
   "main": "index.js",
   "types": "./types/index.d.ts",
