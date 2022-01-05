@@ -6,7 +6,7 @@ import android.util.Log;
 
 import com.anjlab.android.iab.v3.BillingProcessor;
 import com.anjlab.android.iab.v3.SkuDetails;
-import com.anjlab.android.iab.v3.TransactionDetails;
+import com.anjlab.android.iab.v3.PurchaseInfo;
 import com.anjlab.android.iab.v3.PurchaseData;
 
 import com.facebook.react.bridge.ActivityEventListener;
@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import javax.annotation.Nullable;
 
 public class InAppBillingBridge extends ReactContextBaseJavaModule implements ActivityEventListener, BillingProcessor.IBillingHandler {
     ReactApplicationContext _reactContext;
@@ -67,7 +69,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void open(final Promise promise){
+    public void open(final Promise promise) {
         if (isIabServiceAvailable()) {
             if (bp == null) {
                 clearPromises();
@@ -89,7 +91,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void close(final Promise promise){
+    public void close(final Promise promise) {
         if (bp != null) {
             bp.release();
             bp = null;
@@ -100,19 +102,26 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void loadOwnedPurchasesFromGoogle(final Promise promise){
-      if (bp != null) {
-          bp.loadOwnedPurchasesFromGoogle();
-          promise.resolve(true);
-      } else {
-          promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
-      }
+    public void loadOwnedPurchasesFromGoogle(final Promise promise) {
+        if (bp != null) {
+            bp.loadOwnedPurchasesFromGoogleAsync(new BillingProcessor.IPurchasesResponseListener() {
+                @Override
+                public void onPurchasesSuccess() {
+                    promise.resolve(true);
+                }
+
+                @Override
+                public void onPurchasesError() {
+                }
+            });
+        } else {
+            promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
+        }
     }
 
     @Override
-    public void onProductPurchased(String productId, TransactionDetails details) {
-        if (details != null && productId.equals(details.purchaseInfo.purchaseData.productId))
-        {
+    public void onProductPurchased(String productId, PurchaseInfo details) {
+        if (details != null && productId.equals(details.purchaseData.productId)) {
             try {
                 WritableMap map = mapTransactionDetails(details);
                 resolvePromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, map);
@@ -131,10 +140,10 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void purchase(final String productId, final String developerPayload, final Promise promise){
+    public void purchase(final String productId, final String developerPayload, final Promise promise) {
         if (bp != null) {
             if (putPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, promise)) {
-                boolean purchaseProcessStarted = bp.purchase(getCurrentActivity(), productId, developerPayload);
+                boolean purchaseProcessStarted = bp.purchase(getCurrentActivity(), productId);
                 if (!purchaseProcessStarted)
                     rejectPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, "Could not start purchase process.");
             } else {
@@ -149,11 +158,18 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     public void consumePurchase(final String productId, final Promise promise) {
         if (bp != null) {
             try {
-                boolean consumed = bp.consumePurchase(productId);
-                if (consumed)
-                    promise.resolve(true);
-                else
-                    promise.reject("EUNSPECIFIED", "Could not consume purchase");
+                bp.consumePurchaseAsync(productId,
+                        new BillingProcessor.IPurchasesResponseListener() {
+                            @Override
+                            public void onPurchasesSuccess() {
+                                promise.resolve(true);
+                            }
+
+                            @Override
+                            public void onPurchasesError() {
+                                promise.reject("EUNSPECIFIED", "Could not consume purchase");
+                            }
+                        });
             } catch (Exception ex) {
                 promise.reject("EUNSPECIFIED", "Failure on consume: " + ex.getMessage());
             }
@@ -163,10 +179,10 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void subscribe(final String productId, final String developerPayload, final Promise promise){
+    public void subscribe(final String productId, final String developerPayload, final Promise promise) {
         if (bp != null) {
             if (putPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, promise)) {
-                boolean subscribeProcessStarted = bp.subscribe(getCurrentActivity(), productId, developerPayload);
+                boolean subscribeProcessStarted = bp.subscribe(getCurrentActivity(), productId);
                 if (!subscribeProcessStarted)
                     rejectPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, "Could not start subscribe process.");
             } else {
@@ -178,18 +194,16 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void updateSubscription(final ReadableArray oldProductIds, final String productId, final String developerPayload, final Promise promise){
+    public void updateSubscription(final ReadableArray oldProductIds, final String productId, final String developerPayload, final Promise promise) {
         if (bp != null) {
             if (putPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, promise)) {
                 ArrayList<String> oldProductIdList = new ArrayList<>();
                 for (int i = 0; i < oldProductIds.size(); i++) {
-                    oldProductIdList.add(oldProductIds.getString(i));
+                    boolean updateProcessStarted = bp.updateSubscription(getCurrentActivity(), oldProductIds.getString(i), productId);
+
+                    if (!updateProcessStarted)
+                        rejectPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, "Could not start updateSubscription process.");
                 }
-
-                boolean updateProcessStarted = bp.updateSubscription(getCurrentActivity(), oldProductIdList, productId, developerPayload);
-
-                if (!updateProcessStarted)
-                    rejectPromise(PromiseConstants.PURCHASE_OR_SUBSCRIBE, "Could not start updateSubscription process.");
             } else {
                 promise.reject("EUNSPECIFIED", "Previous subscribe or purchase operation is not resolved.");
             }
@@ -199,7 +213,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void isSubscribed(final String productId, final Promise promise){
+    public void isSubscribed(final String productId, final Promise promise) {
         if (bp != null) {
             boolean subscribed = bp.isSubscribed(productId);
             promise.resolve(subscribed);
@@ -209,7 +223,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void isPurchased(final String productId, final Promise promise){
+    public void isPurchased(final String productId, final Promise promise) {
         if (bp != null) {
             boolean purchased = bp.isPurchased(productId);
             promise.resolve(purchased);
@@ -219,7 +233,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void isOneTimePurchaseSupported(final Promise promise){
+    public void isOneTimePurchaseSupported(final Promise promise) {
         if (bp != null) {
             boolean oneTimePurchaseSupported = bp.isOneTimePurchaseSupported();
             promise.resolve(oneTimePurchaseSupported);
@@ -232,8 +246,8 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     public void isValidTransactionDetails(final String productId, final Promise promise) {
         if (bp != null) {
             try {
-                TransactionDetails details = bp.getPurchaseTransactionDetails(productId);
-                promise.resolve(bp.isValidTransactionDetails(details));
+                PurchaseInfo details = bp.getPurchaseInfo(productId);
+                promise.resolve(bp.isValidPurchaseInfo(details));
             } catch (Exception ex) {
                 promise.reject("EUNSPECIFIED", "Failed to validate transaction details: " + ex.getMessage());
             }
@@ -243,7 +257,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void listOwnedProducts(final Promise promise){
+    public void listOwnedProducts(final Promise promise) {
         if (bp != null) {
             List<String> purchasedProductIds = bp.listOwnedProducts();
             WritableArray arr = Arguments.createArray();
@@ -259,7 +273,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @ReactMethod
-    public void listOwnedSubscriptions(final Promise promise){
+    public void listOwnedSubscriptions(final Promise promise) {
         if (bp != null) {
             List<String> ownedSubscriptionsIds = bp.listOwnedSubscriptions();
             WritableArray arr = Arguments.createArray();
@@ -283,29 +297,36 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
                     productIdList.add(productIds.getString(i));
                 }
 
-                List<SkuDetails> details = bp.getPurchaseListingDetails(productIdList);
+                bp.getPurchaseListingDetailsAsync(productIdList,
+                        new BillingProcessor.ISkuDetailsResponseListener() {
+                            @Override
+                            public void onSkuDetailsResponse(@Nullable List<SkuDetails> products) {
+                                if (products != null) {
+                                    WritableArray arr = Arguments.createArray();
+                                    for (SkuDetails detail : products) {
+                                        if (detail != null) {
+                                            WritableMap map = Arguments.createMap();
 
-                if (details != null) {
-                    WritableArray arr = Arguments.createArray();
-                    for (SkuDetails detail : details) {
-                        if (detail != null) {
-                            WritableMap map = Arguments.createMap();
+                                            map.putString("productId", detail.productId);
+                                            map.putString("title", detail.title);
+                                            map.putString("description", detail.description);
+                                            map.putBoolean("isSubscription", detail.isSubscription);
+                                            map.putString("currency", detail.currency);
+                                            map.putDouble("priceValue", detail.priceValue);
+                                            map.putString("priceText", detail.priceText);
+                                            arr.pushMap(map);
+                                        }
+                                    }
 
-                            map.putString("productId", detail.productId);
-                            map.putString("title", detail.title);
-                            map.putString("description", detail.description);
-                            map.putBoolean("isSubscription", detail.isSubscription);
-                            map.putString("currency", detail.currency);
-                            map.putDouble("priceValue", detail.priceValue);
-                            map.putString("priceText", detail.priceText);
-                            arr.pushMap(map);
-                        }
-                    }
+                                    promise.resolve(arr);
+                                }
+                            }
 
-                    promise.resolve(arr);
-                } else {
-                    promise.reject("EUNSPECIFIED", "Details was not found.");
-                }
+                            @Override
+                            public void onSkuDetailsError(String error) {
+                                promise.reject("EUNSPECIFIED", "Details was not found.");
+                            }
+                        });
             } catch (Exception ex) {
                 promise.reject("EUNSPECIFIED", "Failure on getting product details: " + ex.getMessage());
             }
@@ -316,63 +337,69 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
 
     @ReactMethod
     public void getSubscriptionDetails(final ReadableArray productIds, final Promise promise) {
-        if (bp != null) {
-            try {
-                ArrayList<String> productIdList = new ArrayList<>();
-                for (int i = 0; i < productIds.size(); i++) {
-                    productIdList.add(productIds.getString(i));
-                }
-
-                List<SkuDetails> details = bp.getSubscriptionListingDetails(productIdList);
-
-                if (details != null) {
-                    WritableArray arr = Arguments.createArray();
-                    for (SkuDetails detail : details) {
-                        if (detail != null) {
-                            WritableMap map = Arguments.createMap();
-
-                            map.putString("productId", detail.productId);
-                            map.putString("title", detail.title);
-                            map.putString("description", detail.description);
-                            map.putBoolean("isSubscription", detail.isSubscription);
-                            map.putString("currency", detail.currency);
-                            map.putDouble("priceValue", detail.priceValue);
-                            map.putString("priceText", detail.priceText);
-                            map.putString("subscriptionPeriod", detail.subscriptionPeriod);
-                            if (detail.subscriptionFreeTrialPeriod != null)
-                                map.putString("subscriptionFreeTrialPeriod", detail.subscriptionFreeTrialPeriod);
-                            map.putBoolean("haveTrialPeriod", detail.haveTrialPeriod);
-                            map.putDouble("introductoryPriceValue", detail.introductoryPriceValue);
-                            if (detail.introductoryPriceText != null)
-                                map.putString("introductoryPriceText", detail.introductoryPriceText);
-                            if (detail.introductoryPricePeriod != null)
-                                map.putString("introductoryPricePeriod", detail.introductoryPricePeriod);
-                            map.putBoolean("haveIntroductoryPeriod", detail.haveIntroductoryPeriod);
-                            map.putInt("introductoryPriceCycles", detail.introductoryPriceCycles);
-                            arr.pushMap(map);
-                        }
-                    }
-
-                    promise.resolve(arr);
-                } else {
-                    promise.reject("EUNSPECIFIED", "Details was not found.");
-                }
-            } catch (Exception ex) {
-                promise.reject("EUNSPECIFIED", "Failure on getting product details: " + ex.getMessage());
-            }
-        } else {
-            promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
-        }
+//        if (bp != null) {
+//            try {
+//                ArrayList<String> productIdList = new ArrayList<>();
+//                for (int i = 0; i < productIds.size(); i++) {
+//                    productIdList.add(productIds.getString(i));
+//                }
+//
+//                List<SkuDetails> details = bp.getSubscriptionListingDetailsAsync(productIdList,
+//                        new BillingProcessor.ISkuDetailsResponseListener() {
+//                            @Override
+//                            public void onSkuDetailsResponse(@Nullable final List<SkuDetails> products) {
+//                                if (products != null) {
+//                                    WritableArray arr = Arguments.createArray();
+//                                    for (SkuDetails detail : products) {
+//                                        if (detail != null) {
+//                                            WritableMap map = Arguments.createMap();
+//
+//                                            map.putString("productId", detail.productId);
+//                                            map.putString("title", detail.title);
+//                                            map.putString("description", detail.description);
+//                                            map.putBoolean("isSubscription", detail.isSubscription);
+//                                            map.putString("currency", detail.currency);
+//                                            map.putDouble("priceValue", detail.priceValue);
+//                                            map.putString("priceText", detail.priceText);
+//                                            map.putString("subscriptionPeriod", detail.subscriptionPeriod);
+//                                            if (detail.subscriptionFreeTrialPeriod != null)
+//                                                map.putString("subscriptionFreeTrialPeriod", detail.subscriptionFreeTrialPeriod);
+//                                            map.putBoolean("haveTrialPeriod", detail.haveTrialPeriod);
+//                                            map.putDouble("introductoryPriceValue", detail.introductoryPriceValue);
+//                                            if (detail.introductoryPriceText != null)
+//                                                map.putString("introductoryPriceText", detail.introductoryPriceText);
+//                                            if (detail.introductoryPricePeriod != null)
+//                                                map.putString("introductoryPricePeriod", detail.introductoryPricePeriod);
+//                                            map.putBoolean("haveIntroductoryPeriod", detail.haveIntroductoryPeriod);
+//                                            map.putInt("introductoryPriceCycles", detail.introductoryPriceCycles);
+//                                            arr.pushMap(map);
+//                                        }
+//                                    }
+//
+//                                    promise.resolve(arr);
+//                                }
+//                            }
+//
+//                            @Override
+//                            public void onSkuDetailsError(String string) {
+//                                promise.reject("EUNSPECIFIED", "Details was not found.");
+//                            }
+//                        });
+//            } catch (Exception ex) {
+//                promise.reject("EUNSPECIFIED", "Failure on getting product details: " + ex.getMessage());
+//            }
+//        } else {
+//            promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
+//        }
     }
 
     @ReactMethod
     public void getPurchaseTransactionDetails(final String productId, final Promise promise) {
         if (bp != null) {
-            TransactionDetails details = bp.getPurchaseTransactionDetails(productId);
-            if (details != null && productId.equals(details.purchaseInfo.purchaseData.productId))
-            {
-                  WritableMap map = mapTransactionDetails(details);
-                  promise.resolve(map);
+            PurchaseInfo details = bp.getSubscriptionPurchaseInfo(productId);
+            if (details != null && productId.equals(details.purchaseData.productId)) {
+                WritableMap map = mapTransactionDetails(details);
+                promise.resolve(map);
             } else {
                 promise.reject("EUNSPECIFIED", "Could not find transaction details for productId.");
             }
@@ -384,11 +411,10 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     @ReactMethod
     public void getSubscriptionTransactionDetails(final String productId, final Promise promise) {
         if (bp != null) {
-            TransactionDetails details = bp.getSubscriptionTransactionDetails(productId);
-            if (details != null && productId.equals(details.purchaseInfo.purchaseData.productId))
-            {
-                  WritableMap map = mapTransactionDetails(details);
-                  promise.resolve(map);
+            PurchaseInfo details = bp.getSubscriptionPurchaseInfo(productId);
+            if (details != null && productId.equals(details.purchaseData.productId)) {
+                WritableMap map = mapTransactionDetails(details);
+                promise.resolve(map);
             } else {
                 promise.reject("EUNSPECIFIED", "Could not find transaction details for productId.");
             }
@@ -397,23 +423,23 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
         }
     }
 
-    private WritableMap mapTransactionDetails(TransactionDetails details) {
+    private WritableMap mapTransactionDetails(PurchaseInfo details) {
         WritableMap map = Arguments.createMap();
 
-        map.putString("receiptData", details.purchaseInfo.responseData.toString());
+        map.putString("receiptData", details.responseData.toString());
 
-        if (details.purchaseInfo.signature != null)
-            map.putString("receiptSignature", details.purchaseInfo.signature.toString());
+        if (details.signature != null)
+            map.putString("receiptSignature", details.signature.toString());
 
-        PurchaseData purchaseData = details.purchaseInfo.purchaseData;
+        PurchaseData purchaseData = details.purchaseData;
 
         map.putString("productId", purchaseData.productId);
         map.putString("orderId", purchaseData.orderId);
         map.putString("purchaseToken", purchaseData.purchaseToken);
         map.putString("purchaseTime", purchaseData.purchaseTime == null
-          ? "" : purchaseData.purchaseTime.toString());
+                ? "" : purchaseData.purchaseTime.toString());
         map.putString("purchaseState", purchaseData.purchaseState == null
-          ? "" : purchaseData.purchaseState.toString());
+                ? "" : purchaseData.purchaseState.toString());
         map.putBoolean("autoRenewing", purchaseData.autoRenewing);
 
         if (purchaseData.developerPayload != null)
@@ -440,8 +466,8 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
             return;
         }
 
-        if (bp != null)
-            bp.handleActivityResult(requestCode, resultCode, intent);
+//        if (bp != null)
+//            bp.handleActivityResult(requestCode, resultCode, intent);
     }
 
     @ReactMethod
@@ -467,7 +493,7 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
     }
 
     @Override
-    public void onNewIntent(Intent intent){
+    public void onNewIntent(Intent intent) {
 
     }
 
