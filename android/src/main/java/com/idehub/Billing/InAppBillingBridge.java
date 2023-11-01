@@ -337,60 +337,60 @@ public class InAppBillingBridge extends ReactContextBaseJavaModule implements Ac
 
     @ReactMethod
     public void getSubscriptionDetails(final ReadableArray productIds, final Promise promise) {
-//        if (bp != null) {
-//            try {
-//                ArrayList<String> productIdList = new ArrayList<>();
-//                for (int i = 0; i < productIds.size(); i++) {
-//                    productIdList.add(productIds.getString(i));
-//                }
-//
-//                List<SkuDetails> details = bp.getSubscriptionListingDetailsAsync(productIdList,
-//                        new BillingProcessor.ISkuDetailsResponseListener() {
-//                            @Override
-//                            public void onSkuDetailsResponse(@Nullable final List<SkuDetails> products) {
-//                                if (products != null) {
-//                                    WritableArray arr = Arguments.createArray();
-//                                    for (SkuDetails detail : products) {
-//                                        if (detail != null) {
-//                                            WritableMap map = Arguments.createMap();
-//
-//                                            map.putString("productId", detail.productId);
-//                                            map.putString("title", detail.title);
-//                                            map.putString("description", detail.description);
-//                                            map.putBoolean("isSubscription", detail.isSubscription);
-//                                            map.putString("currency", detail.currency);
-//                                            map.putDouble("priceValue", detail.priceValue);
-//                                            map.putString("priceText", detail.priceText);
-//                                            map.putString("subscriptionPeriod", detail.subscriptionPeriod);
-//                                            if (detail.subscriptionFreeTrialPeriod != null)
-//                                                map.putString("subscriptionFreeTrialPeriod", detail.subscriptionFreeTrialPeriod);
-//                                            map.putBoolean("haveTrialPeriod", detail.haveTrialPeriod);
-//                                            map.putDouble("introductoryPriceValue", detail.introductoryPriceValue);
-//                                            if (detail.introductoryPriceText != null)
-//                                                map.putString("introductoryPriceText", detail.introductoryPriceText);
-//                                            if (detail.introductoryPricePeriod != null)
-//                                                map.putString("introductoryPricePeriod", detail.introductoryPricePeriod);
-//                                            map.putBoolean("haveIntroductoryPeriod", detail.haveIntroductoryPeriod);
-//                                            map.putInt("introductoryPriceCycles", detail.introductoryPriceCycles);
-//                                            arr.pushMap(map);
-//                                        }
-//                                    }
-//
-//                                    promise.resolve(arr);
-//                                }
-//                            }
-//
-//                            @Override
-//                            public void onSkuDetailsError(String string) {
-//                                promise.reject("EUNSPECIFIED", "Details was not found.");
-//                            }
-//                        });
-//            } catch (Exception ex) {
-//                promise.reject("EUNSPECIFIED", "Failure on getting product details: " + ex.getMessage());
-//            }
-//        } else {
-//            promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
-//        }
+       if (bp != null) {
+           try {
+               ArrayList<String> productIdList = new ArrayList<>();
+               for (int i = 0; i < productIds.size(); i++) {
+                   productIdList.add(productIds.getString(i));
+               }
+                String productId = productIds.getString(0);
+               bp.getSubscriptionListingDetailsAsync(productId,
+                       new BillingProcessor.ISkuDetailsResponseListener() {
+                           @Override
+                           public void onSkuDetailsResponse(@Nullable final List<SkuDetails> products) {
+                               if (products != null) {
+                                   WritableArray arr = Arguments.createArray();
+                                   for (SkuDetails detail : products) {
+                                       if (detail != null) {
+                                           WritableMap map = Arguments.createMap();
+
+                                           map.putString("productId", detail.productId);
+                                           map.putString("title", detail.title);
+                                           map.putString("description", detail.description);
+                                           map.putBoolean("isSubscription", detail.isSubscription);
+                                           map.putString("currency", detail.currency);
+                                           map.putDouble("priceValue", detail.priceValue);
+                                           map.putString("priceText", detail.priceText);
+                                           map.putString("subscriptionPeriod", detail.subscriptionPeriod);
+                                           if (detail.subscriptionFreeTrialPeriod != null)
+                                               map.putString("subscriptionFreeTrialPeriod", detail.subscriptionFreeTrialPeriod);
+                                           map.putBoolean("haveTrialPeriod", detail.haveTrialPeriod);
+                                           map.putDouble("introductoryPriceValue", detail.introductoryPriceValue);
+                                           if (detail.introductoryPriceText != null)
+                                               map.putString("introductoryPriceText", detail.introductoryPriceText);
+                                           if (detail.introductoryPricePeriod != null)
+                                               map.putString("introductoryPricePeriod", detail.introductoryPricePeriod);
+                                           map.putBoolean("haveIntroductoryPeriod", detail.haveIntroductoryPeriod);
+                                           map.putInt("introductoryPriceCycles", detail.introductoryPriceCycles);
+                                           arr.pushMap(map);
+                                       }
+                                   }
+
+                                   promise.resolve(arr);
+                               }
+                           }
+
+                           @Override
+                           public void onSkuDetailsError(String string) {
+                               promise.reject("EUNSPECIFIED", "Details was not found.");
+                           }
+                       });
+           } catch (Exception ex) {
+               promise.reject("EUNSPECIFIED", "Failure on getting product details: " + ex.getMessage());
+           }
+       } else {
+           promise.reject("EUNSPECIFIED", "Channel is not opened. Call open() on InAppBilling.");
+       }
     }
 
     @ReactMethod
